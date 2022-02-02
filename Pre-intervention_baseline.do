@@ -23,6 +23,7 @@
         //General cleaning
     2. Label variables
     3. Order variables in original sequence and saves dta
+	4. Runs automatic checks on key variables
 
     */
 ///-----------------------------------------------------------------------------
@@ -411,4 +412,558 @@
 		
 	//908 Var.
 	d,s
+	
+ window stopbox rusure "Do you want to continue to run high frequency checks?`=char(13)'Yes=continue; No=stop here."
+ window stopbox note "Good choice!"
+
+
+/////////////////////////////////////////////////////////////
+//// 4. Run checks          ////
+////////////////////////////////////////////////////////////
+
+  //Create output files
+
+	local hfc_file "$Dailyhfc_$filename$filedate.csv"
+	destring admin_participant_id,replace
+
+	export excel using  "$Dailyhfc_$filename$filedate.csv", replace
+
+  //Fix data
+	foreach var of varlist _all{
+		char `var'[charname] "`var'"
+	}
+
+	global biz_info "admin_participant_id  admin_respondent_name"
+
+	duplicates tag admin_participant_id, generate(id_dup)
+
+	listtab $biz_info  using `hfc_file' if id_dup==1, delimiter(",") replace headlines("Duplicate Respondent ID") headchars(charname)
+
+  // Respondent haven't made a sale and sales not =0
+
+	listtab $biz_info  bo_transactions_frequency sales_last_month_2 profits_last_month_2 if bo_transactions_frequency==0 & sales_last_month !=0,delimiter(",")appendto(`hfc_file') replace headlines("Respondent haven't made a sale and sales not 0 (As of FEBRUARY 2020)") headchars(charname)
+
+
+  // Respondent with sales less than 100
+
+ 	listtab $biz_info  bo_transactions_frequency sales_last_month_2 profits_last_month_2 if sales_last_month <=100 ,delimiter(",")appendto(`hfc_file') replace headlines("Respondent with sales less than 100 (As of FEBRUARY 2020)") headchars(charname)
+
+
+  // Sales/Profit ratios for different business types
+
+	destring sales_last_month sales_typical_month profits_last_month profits_typical_month, replace
+
+	gen sales_profit_ratio = profits_last_month/sales_last_month
+
+	listtab $biz_info sales_last_month profits_last_month   if sales_profit_ratio > .5 & bo_primary_how_BuyResell ==1, delimiter(",")appendto(`hfc_file') replace headlines("Resellers with sales/Profits off") headchars(charname)
+
+	listtab $biz_info  sales_last_month profits_last_month if sales_profit_ratio > .75 & bo_primary_how_Manufacture ==1, delimiter(",")appendto(`hfc_file') replace headlines("Manufacturers with sales/Profits off") headchars(charname)
+
+	listtab $biz_info  sales_last_month profits_last_month if sales_profit_ratio > .75 & bo_primary_how_Services ==1, delimiter(",")appendto(`hfc_file') replace headlines("service providers with sales/Profits off") headchars(charname)
+
+	//As of FEBRUARY 2020
+	destring sales_last_month_2 profits_last_month_2, replace
+
+	gen sales_profit_ratio_2 = profits_last_month_2/sales_last_month_2
+
+	listtab $biz_info sales_last_month_2 profits_last_month_2  if sales_profit_ratio_2 > .5 & bo_primary_how_BuyResell ==1, delimiter(",")appendto(`hfc_file') replace headlines("Resellers with sales/Profits off (As of FEBRUARY 2020)") headchars(charname)
+
+	listtab $biz_info sales_last_month_2 profits_last_month_2 if sales_profit_ratio_2 > .75 & bo_primary_how_Manufacture ==1, delimiter(",")appendto(`hfc_file') replace headlines("Manufacturers with sales/Profits off (As of FEBRUARY 2020) ") headchars(charname)
+
+	listtab $biz_info sales_last_month_2 profits_last_month_2 if sales_profit_ratio_2 > .75 & bo_primary_how_Services ==1, delimiter(",")appendto(`hfc_file') replace headlines("service providers with sales/Profits off (As of FEBRUARY 2020)") headchars(charname)
+
+
+	//// Checking outliers in sales and profits
+
+	set trace off
+			gen flag_outlier = 0
+			foreach x in 1.5 3 {
+			foreach var of varlist sales_last_month profits_last_month  {
+				egen mean = mean(`var')
+				egen sd = sd(`var')
+				generate sds = (`var' - mean) / sd
+				format mean sd sds %9.2f
+				sort admin_participant_id
+				char sd [charname] "SD"
+				char sds [charname] "Standard SD"
+				char mean [charname] "Mean"
+				listtab $biz_info `var' mean sd sds if abs(sds) > `x' & !missing(sds), delimiter(",") appendto(`hfc_file') replace headlines("Displaying potential outliers in `var' (`x' SDs from the mean):") headchars(charname)
+				replace flag_outlier = 1 if abs(sds) > `x' & !missing(sds)
+				drop mean sd sds
+			}
+		}
+
+	//As of FEBRUARY 2020
+	set trace on
+			drop flag_outlier
+			gen flag_outlier = 0
+			foreach x in 1.5 3 {
+			foreach var of varlist  sales_last_month_2 profits_last_month_2  {
+				egen mean = mean(`var')
+				egen sd = sd(`var')
+				generate sds = (`var' - mean) / sd
+				format mean sd sds %9.2f
+				sort admin_participant_id
+				char sd [charname] "SD"
+				char sds [charname] "Standard SD"
+				char mean [charname] "Mean"
+				listtab $biz_info `var' mean sd sds if abs(sds) > `x' & !missing(sds), delimiter(",") appendto(`hfc_file') replace headlines("Displaying potential outliers in `var' (`x' SDs from the mean) (As of FEBRUARY 2020):") headchars(charname)
+				replace flag_outlier = 1 if abs(sds) > `x' & !missing(sds)
+				drop mean sd sds
+			}
+		}
+
+	//// Outliers in number of employees
+	destring emp_total,replace ignore(",")
+	drop flag_outlier
+	gen flag_outlier = 0
+
+		foreach x in 1.5 3 {
+			foreach var of varlist emp_total {
+				egen mean = mean(`var')
+				egen sd = sd(`var')
+				generate sds = (`var' - mean) / sd
+				format mean sd sds %9.2f
+				sort admin_participant_id
+				char sd [charname] "SD"
+				char sds [charname] "Standard SD"
+				char mean [charname] "Mean"
+				listtab $biz_info `var' mean sd sds if abs(sds) > `x' & !missing(sds), delimiter(",") appendto(`hfc_file') replace headlines("Displaying potential outliers in `var' (`x' SDs from the mean):") headchars(charname)
+				replace flag_outlier = 1 if abs(sds) > `x' & !missing(sds)
+				drop mean sd sds
+			}
+		}
+
+	//// Check of total employees
+	tempvar total_empl
+	egen `total_empl' =  rowtotal(emp_partners emp_executives emp_fulltime emp_parttime)
+	tempvar error_empl
+	gen `error_empl' = `total_empl' != emp_total
+
+
+	listtab $biz_info emp_partners emp_executives emp_fulltime emp_parttime emp_total if `error_empl' ==1  & bo_transactions_frequency==0,delimiter(",") appendto(`hfc_file') replace headlines("Total employmend doesnt add-up") headchars(charname)
+
+
+	//// Outliers in asset value by asset groups
+
+	drop flag_outlier
+	gen flag_outlier = 0
+	local asset asset_land_value asset_building_value asset_lgvehicle_value asset_smvehicle_value asset_machine_value asset_tools_value asset_itech_value asset_furniture_value asset_wc1_stock_value asset_wc2_materials_value asset_wc3_money_value asset_ip_value
+
+		foreach var of local asset {
+			destring `var',force replace
+				foreach x in 1.5 3 {
+						egen mean = mean(`var')
+						egen sd = sd(`var')
+						generate sds = (`var' - mean) / sd
+						format mean sd sds %9.2f
+						sort admin_participant_id
+						char sd [charname] "SD"
+						char sds [charname] "Standard SD"
+						char mean [charname] "Mean"
+						listtab $biz_info `var' mean sd sds if abs(sds) > `x' & !missing(sds), delimiter(",") appendto(`hfc_file') replace headlines("Displaying potential outliers in op_`var'_value (`x' SDs from the mean):") headchars(charname)
+						replace flag_outlier = 1 if abs(sds) > `x' & !missing(sds)
+						drop mean sd sds
+			}
+		}
+
+	//As of FEBRUARY 2020
+	drop flag_outlier
+	gen flag_outlier = 0
+	local asset asset_land_value_2 asset_building_value_2 asset_lgvehicle_value_2 asset_smvehicle_value_2 asset_machine_value_2 asset_tools_value_2 asset_itech_value_2 asset_furniture_value_2 asset_wc1_stock_value_2 asset_wc2_materials_value_2 asset_wc3_money_value_2 asset_ip_value_2
+
+		foreach var of local asset {
+			destring `var',force replace
+				foreach x in 1.5 3 {
+						egen mean = mean(`var')
+						egen sd = sd(`var')
+						generate sds = (`var' - mean) / sd
+						format mean sd sds %9.2f
+						sort admin_participant_id
+						char sd [charname] "SD"
+						char sds [charname] "Standard SD"
+						char mean [charname] "Mean"
+						listtab $biz_info `var' mean sd sds if abs(sds) > `x' & !missing(sds), delimiter(",") appendto(`hfc_file') replace headlines("Displaying potential outliers in op_`var'_value (`x' SDs from the mean) (As of FEBRUARY 2020):") headchars(charname)
+						replace flag_outlier = 1 if abs(sds) > `x' & !missing(sds)
+						drop mean sd sds
+			}
+		}
+
+	//// Checking outliers in stock value, materials value, and working capital
+
+	drop flag_outlier
+	gen flag_outlier = 0
+
+		foreach x in 1.5 3 {
+			foreach var of varlist asset_wc1_stock_value asset_wc2_materials_value asset_wc3_money_value   {
+				egen mean = mean(`var')
+				egen sd = sd(`var')
+				generate sds = (`var' - mean) / sd
+				format mean sd sds %9.2f
+				sort admin_participant_id
+				char sd [charname] "SD"
+				char sds [charname] "Standard SD"
+				char mean [charname] "Mean"
+				listtab $biz_info `var' mean sd sds if abs(sds) > `x' & !missing(sds), delimiter(",") appendto(`hfc_file') replace headlines("Displaying potential outliers in `var' (`x' SDs from the mean) :") headchars(charname)
+				replace flag_outlier = 1 if abs(sds) > `x' & !missing(sds)
+				drop mean sd sds
+				}
+		}
+
+	//As of FEBRUARY 2020
+	drop flag_outlier
+	gen flag_outlier = 0
+
+		foreach x in 1.5 3 {
+			foreach var of varlist asset_wc1_stock_value_2 asset_wc2_materials_value_2 asset_wc3_money_value_2  {
+				egen mean = mean(`var')
+				egen sd = sd(`var')
+				generate sds = (`var' - mean) / sd
+				format mean sd sds %9.2f
+				sort admin_participant_id
+				char sd [charname] "SD"
+				char sds [charname] "Standard SD"
+				char mean [charname] "Mean"
+				listtab $biz_info `var' mean sd sds if abs(sds) > `x' & !missing(sds), delimiter(",") appendto(`hfc_file') replace headlines("Displaying potential outliers in `var' (`x' SDs from the mean) (As of FEBRUARY 2020):") headchars(charname)
+				replace flag_outlier = 1 if abs(sds) > `x' & !missing(sds)
+				drop mean sd sds
+				}
+		}
+
+	drop flag_outlier
+
+
+	///* Check answers text coded responses
+	foreach var of varlist {
+		tostring `var', replace
+		replace `var'="" if `var'=="."
+		listtab $biz_info `var' if `var' !="" , delimiter(",") appendto(`hfc_file') replace headlines(" "`var'" others") headchars(charname)
+		}
+*/
+
+
+// Sales Scale does not correspond with the sales amount
+
+	destring sales_last_month, replace
+
+	replace sales_last_month=0 if sales_last_month==.
+
+	gen sales_last_month_scale_dum= sales_last_month_scale
+	order sales_last_month_scale_dum,after(sales_last_month_scale)
+	tostring sales_last_month_scale_dum,replace           //values that will be used for comparison
+	destring sales_last_month_scale_dum,replace
+
+
+	gen sales_comparison =0
+	replace sales_comparison =1 if sales_last_month	>=1 & sales_last_month <=50000
+	replace sales_comparison =2 if sales_last_month	>=50001  & sales_last_month <= 100000
+	replace sales_comparison =3 if sales_last_month	>=100001 & sales_last_month <= 150000
+	replace sales_comparison =4 if sales_last_month	>=150001 & sales_last_month <= 200000
+	replace sales_comparison =5 if sales_last_month	>=200001 & sales_last_month <= 250000
+	replace sales_comparison =6 if sales_last_month	>=250001 & sales_last_month <= 300000
+	replace sales_comparison =7 if sales_last_month	>=300001 & sales_last_month <= 350000
+	replace sales_comparison =8 if sales_last_month	>=350001 & sales_last_month <= 400000
+	replace sales_comparison =9 if sales_last_month	>=400001  & sales_last_month <= 450000
+	replace sales_comparison =10 if sales_last_month >=450001  & sales_last_month <= 500000
+	replace sales_comparison =11 if sales_last_month >=500001  & sales_last_month <= 550000
+	replace sales_comparison =12 if sales_last_month >=550001  & sales_last_month <= 600000
+	replace sales_comparison =13 if sales_last_month >=600001  & sales_last_month <= 650000
+	replace sales_comparison =14 if sales_last_month >=650001  & sales_last_month <= 700000
+	replace sales_comparison =15 if sales_last_month >=700001  & sales_last_month <= 750000
+	replace sales_comparison =16 if sales_last_month >=750001  & sales_last_month <= 800000
+	replace sales_comparison =17 if sales_last_month >=800001  & sales_last_month <= 850000
+	replace sales_comparison =18 if sales_last_month >=850001  & sales_last_month <= 900000
+	replace sales_comparison =19 if sales_last_month >=900001  & sales_last_month <= 950000
+	replace sales_comparison =20 if sales_last_month >=950001  & sales_last_month <= 1000000
+	replace sales_comparison =21 if sales_last_month >= 1000001
+
+	foreach var of varlist _all{
+			char `var'[charname] "`var'"
+		}
+
+
+	listtab $biz_info   sales_last_month sales_last_month_scale_dum sales_comparison if sales_comparison !=sales_last_month_scale_dum & bo_operational==1, delimiter(",") appendto(`hfc_file') replace headlines("Sales value and enumerator scale are different?") headchars(charname)
+
+	listtab $biz_info  bo_primary_how sales_last_month  sales_typical_month   if sales_last_month - sales_typical_month >3000 & bo_operational==1, delimiter(",") appendto(`hfc_file') replace headlines("Last Month sales and typical month have difference greater than 3K") headchars(charname)
+
+	listtab $biz_info  bo_primary_how sales_last_month  sales_typical_month   if sales_last_month -sales_typical_month >3000 & bo_operational==1, delimiter(",") appendto(`hfc_file') replace headlines("Last Month sales and Typical sales have huge differences") headchars(charname)
+
+	//As of FEBRUARY 2020
+	destring sales_last_month_2, replace
+
+	replace sales_last_month_2=0 if sales_last_month_2==.
+
+	gen sales_last_month_scale_dum_2= sales_last_month_scale_2
+	order sales_last_month_scale_dum_2,after(sales_last_month_scale_2)
+	tostring sales_last_month_scale_dum_2,replace //values that will be used for comparison
+	destring sales_last_month_scale_dum_2,replace
+
+	drop sales_comparison
+	gen sales_comparison =0
+	replace sales_comparison =1 if sales_last_month_2	>=1 & sales_last_month_2 <=50000
+	replace sales_comparison =2 if sales_last_month_2	>=50001  & sales_last_month_2 <= 100000
+	replace sales_comparison =3 if sales_last_month_2	>=100001 & sales_last_month_2 <= 150000
+	replace sales_comparison =4 if sales_last_month_2	>=150001 & sales_last_month_2 <= 200000
+	replace sales_comparison =5 if sales_last_month_2	>=200001 & sales_last_month_2 <= 250000
+	replace sales_comparison =6 if sales_last_month_2	>=250001 & sales_last_month_2 <= 300000
+	replace sales_comparison =7 if sales_last_month_2	>=300001 & sales_last_month_2 <= 350000
+	replace sales_comparison =8 if sales_last_month_2	>=350001 & sales_last_month_2 <= 400000
+	replace sales_comparison =9 if sales_last_month_2	>=400001  & sales_last_month_2 <= 450000
+	replace sales_comparison =10 if sales_last_month_2 >=450001  & sales_last_month_2 <= 500000
+	replace sales_comparison =11 if sales_last_month_2 >=500001  & sales_last_month_2 <= 550000
+	replace sales_comparison =12 if sales_last_month_2 >=550001  & sales_last_month_2 <= 600000
+	replace sales_comparison =13 if sales_last_month_2 >=600001  & sales_last_month_2 <= 650000
+	replace sales_comparison =14 if sales_last_month_2 >=650001  & sales_last_month_2 <= 700000
+	replace sales_comparison =15 if sales_last_month_2 >=700001  & sales_last_month_2 <= 750000
+	replace sales_comparison =16 if sales_last_month_2 >=750001  & sales_last_month_2 <= 800000
+	replace sales_comparison =17 if sales_last_month_2 >=800001  & sales_last_month_2 <= 850000
+	replace sales_comparison =18 if sales_last_month_2 >=850001  & sales_last_month_2 <= 900000
+	replace sales_comparison =19 if sales_last_month_2 >=900001  & sales_last_month_2 <= 950000
+	replace sales_comparison =20 if sales_last_month_2 >=950001  & sales_last_month_2 <= 1000000
+	replace sales_comparison =21 if sales_last_month_2 >= 1000001
+
+	foreach var of varlist _all{
+			char `var'[charname] "`var'"
+		}
+
+	listtab $biz_info   sales_last_month_2 sales_last_month_scale_dum_2 sales_comparison if sales_comparison !=sales_last_month_scale_dum_2 & bo_operational==1, delimiter(",") appendto(`hfc_file') replace headlines("Sales value and enumerator scale are different? (As of FEBRUARY 2020)") headchars(charname)
+
+
+*Profit in scale does not align with profit value
+	cap drop profits_comparison
+	gen profits_comparison =profits_last_month
+	replace profits_comparison=0 if profits_last_month <=0
+	replace profits_comparison=1 if profits_last_month >=1 &  profits_last_month <= 10000
+	replace profits_comparison=2 if profits_last_month >=10001 &  profits_last_month <= 20000
+	replace profits_comparison=3 if profits_last_month >=20001 &  profits_last_month <= 30000
+	replace profits_comparison=4 if profits_last_month >=30001 &  profits_last_month <= 40000
+	replace profits_comparison=5 if profits_last_month >=40001 &  profits_last_month <= 50000
+	replace profits_comparison=6 if profits_last_month >=50001 &  profits_last_month <= 60000
+	replace profits_comparison=7 if profits_last_month >=60001 &  profits_last_month <= 70000
+	replace profits_comparison=8 if profits_last_month >=70001 &  profits_last_month <= 80000
+	replace profits_comparison=9 if profits_last_month >=80001 &  profits_last_month <= 90000
+	replace profits_comparison=10 if profits_last_month >=90001 &  profits_last_month <= 100000
+	replace profits_comparison=11 if profits_last_month >=100001 &  profits_last_month <= 110000
+	replace profits_comparison=12 if profits_last_month >=110001 &  profits_last_month <= 120000
+	replace profits_comparison=13 if profits_last_month >=120001 &  profits_last_month <= 130000
+	replace profits_comparison=14 if profits_last_month >=130001 &  profits_last_month <= 140000
+	replace profits_comparison=15 if profits_last_month >=140001 &  profits_last_month <= 150000
+	replace profits_comparison=16 if profits_last_month >=150001 &  profits_last_month <= 160000
+	replace profits_comparison=17 if profits_last_month >=160001 &  profits_last_month <= 170000
+	replace profits_comparison=18 if profits_last_month >=170001 &  profits_last_month <= 180000
+	replace profits_comparison=19 if profits_last_month >=180001 &  profits_last_month <= 190000
+	replace profits_comparison=20 if profits_last_month >=190001 &  profits_last_month <= 200000
+	replace profits_comparison=21  if profits_last_month >= 200001 &  profits_last_month !=.
+
+	cap drop profits_last_month_scale_dum
+	gen profits_last_month_scale_dum=profits_last_month_scale
+	order profits_last_month_scale_dum, after (profits_last_month_scale)
+	tostring profits_last_month_scale_dum,replace
+	destring profits_last_month_scale_dum,replace
+
+	foreach var of varlist _all{
+		char `var'[charname] "`var'"
+	}
+
+		listtab $biz_info profits_comparison profits_last_month_scale_dum profits_last_month  if profits_comparison !=profits_last_month_scale_dum & bo_operational==1, delimiter(",") appendto(`hfc_file') replace headlines("Profit value and scale are off?") headchars(charname)
+
+		listtab $biz_info profits_last_month  profits_typical_month   if profits_last_month - profits_typical_month>50000 & bo_operational==1, delimiter(",") appendto(`hfc_file') replace headlines("Last Month sales and Typical sales have huge differences?") headchars(charname)
+
+		//As of FEBRUARY 2020
+		cap drop profits_comparison
+		gen profits_comparison =profits_last_month_2
+		replace profits_comparison=0 if profits_last_month_2 <=0
+		replace profits_comparison=1 if profits_last_month_2 >=1 &  profits_last_month_2 <= 10000
+		replace profits_comparison=2 if profits_last_month_2 >=10001 &  profits_last_month_2 <= 20000
+		replace profits_comparison=3 if profits_last_month_2 >=20001 &  profits_last_month_2 <= 30000
+		replace profits_comparison=4 if profits_last_month_2 >=30001 &  profits_last_month_2 <= 40000
+		replace profits_comparison=5 if profits_last_month_2 >=40001 &  profits_last_month_2 <= 50000
+		replace profits_comparison=6 if profits_last_month_2 >=50001 &  profits_last_month_2 <= 60000
+		replace profits_comparison=7 if profits_last_month_2 >=60001 &  profits_last_month_2 <= 70000
+		replace profits_comparison=8 if profits_last_month_2 >=70001 &  profits_last_month_2 <= 80000
+		replace profits_comparison=9 if profits_last_month_2 >=80001 &  profits_last_month_2 <= 90000
+		replace profits_comparison=10 if profits_last_month_2 >=90001 &  profits_last_month_2 <= 100000
+		replace profits_comparison=11 if profits_last_month_2 >=100001 &  profits_last_month_2 <= 110000
+		replace profits_comparison=12 if profits_last_month_2 >=110001 &  profits_last_month_2 <= 120000
+		replace profits_comparison=13 if profits_last_month_2 >=120001 &  profits_last_month_2 <= 130000
+		replace profits_comparison=14 if profits_last_month_2 >=130001 &  profits_last_month_2 <= 140000
+		replace profits_comparison=15 if profits_last_month_2 >=140001 &  profits_last_month_2 <= 150000
+		replace profits_comparison=16 if profits_last_month_2 >=150001 &  profits_last_month_2 <= 160000
+		replace profits_comparison=17 if profits_last_month_2 >=160001 &  profits_last_month_2 <= 170000
+		replace profits_comparison=18 if profits_last_month_2 >=170001 &  profits_last_month_2 <= 180000
+		replace profits_comparison=19 if profits_last_month_2 >=180001 &  profits_last_month_2 <= 190000
+		replace profits_comparison=20 if profits_last_month_2 >=190001 &  profits_last_month_2 <= 200000
+		replace profits_comparison=21  if profits_last_month_2 >= 200001 &  profits_last_month_2 !=.
+
+		cap drop profits_last_month_scale_dum
+		gen profits_last_month_scale_dum_2=profits_last_month_scale_2
+		order profits_last_month_scale_dum_2, after (profits_last_month_scale_2)
+		tostring profits_last_month_scale_dum_2,replace
+		destring profits_last_month_scale_dum_2,replace
+
+		foreach var of varlist _all{
+				char `var'[charname] "`var'"
+			}
+
+
+		listtab $biz_info profits_comparison profits_last_month_scale_dum_2 profits_last_month_2  if profits_comparison !=profits_last_month_scale_dum_2 & bo_operational==1, delimiter(",") appendto(`hfc_file') replace headlines("Profit value and scale are off? (As of FEBRUARY 2020)") headchars(charname)
+
+
+	*Sales last year in scale does not align with sales value last year
+		destring sales_last_year, replace
+
+		replace sales_last_year=0 if sales_last_year==.
+
+		gen sales_last_year_scale_dum= sales_last_year_scale
+		order sales_last_year_scale_dum,after(sales_last_year_scale)
+		tostring sales_last_year_scale_dum,replace           //values that will be used for comparison
+		destring sales_last_year_scale_dum,replace
+
+		gen sales_comparison_last =0
+		replace sales_comparison_last =1 if sales_last_year	>=1 & sales_last_year <=50000
+		replace sales_comparison_last =2 if sales_last_year	>=50001  & sales_last_year <= 100000
+		replace sales_comparison_last =3 if sales_last_year	>=100001 & sales_last_year <= 150000
+		replace sales_comparison_last =4 if sales_last_year	>=150001 & sales_last_year <= 200000
+		replace sales_comparison_last =5 if sales_last_year	>=200001 & sales_last_year <= 250000
+		replace sales_comparison_last =6 if sales_last_year	>=250001 & sales_last_year <= 300000
+		replace sales_comparison_last =7 if sales_last_year	>=300001 & sales_last_year <= 350000
+		replace sales_comparison_last =8 if sales_last_year	>=350001 & sales_last_year <= 400000
+		replace sales_comparison_last =9 if sales_last_year	>=400001  & sales_last_year <= 450000
+		replace sales_comparison_last =10 if sales_last_year >=450001  & sales_last_year <= 500000
+		replace sales_comparison_last =11 if sales_last_year >=500001  & sales_last_year <= 550000
+		replace sales_comparison_last =12 if sales_last_year >=550001  & sales_last_year <= 600000
+		replace sales_comparison_last =13 if sales_last_year >=600001  & sales_last_year <= 650000
+		replace sales_comparison_last =14 if sales_last_year >=650001  & sales_last_year <= 700000
+		replace sales_comparison_last =15 if sales_last_year >=700001  & sales_last_year <= 750000
+		replace sales_comparison_last =16 if sales_last_year >=750001  & sales_last_year <= 800000
+		replace sales_comparison_last =17 if sales_last_year >=800001  & sales_last_year <= 850000
+		replace sales_comparison_last =18 if sales_last_year >=850001  & sales_last_year <= 900000
+		replace sales_comparison_last =19 if sales_last_year >=900001  & sales_last_year <= 950000
+		replace sales_comparison_last =20 if sales_last_year >=950001  & sales_last_year <= 1000000
+		replace sales_comparison_last =21 if sales_last_year >= 1000001
+
+		foreach var of varlist _all{
+				char `var'[charname] "`var'"
+			}
+
+		listtab $biz_info   sales_last_year sales_last_year_scale_dum sales_comparison_last if sales_comparison_last !=sales_last_year_scale_dum & bo_operational==1, delimiter(",") appendto(`hfc_file') replace headlines("Sales value and enumerator scale LAST YEAR are different?") headchars(charname)
+
+
+	*Profit last year in scale does not align with profit value last year
+		destring profits_last_year, replace ignore(",")
+
+		cap drop profits_comparison_last
+		gen profits_comparison_last =profits_last_year
+		replace profits_comparison_last=0 if profits_last_year <=0
+		replace profits_comparison_last=1 if profits_last_year >=1 &  profits_last_year <= 10000
+		replace profits_comparison_last=2 if profits_last_year >=10001 &  profits_last_year <= 20000
+		replace profits_comparison_last=3 if profits_last_year >=20001 &  profits_last_year <= 30000
+		replace profits_comparison_last=4 if profits_last_year >=30001 &  profits_last_year <= 40000
+		replace profits_comparison_last=5 if profits_last_year >=40001 &  profits_last_year <= 50000
+		replace profits_comparison_last=6 if profits_last_year >=50001 &  profits_last_year <= 60000
+		replace profits_comparison_last=7 if profits_last_year >=60001 &  profits_last_year <= 70000
+		replace profits_comparison_last=8 if profits_last_year >=70001 &  profits_last_year <= 80000
+		replace profits_comparison_last=9 if profits_last_year >=80001 &  profits_last_year <= 90000
+		replace profits_comparison_last=10 if profits_last_year >=90001 &  profits_last_year <= 100000
+		replace profits_comparison_last=11 if profits_last_year >=100001 &  profits_last_year <= 110000
+		replace profits_comparison_last=12 if profits_last_year >=110001 &  profits_last_year <= 120000
+		replace profits_comparison_last=13 if profits_last_year >=120001 &  profits_last_year <= 130000
+		replace profits_comparison_last=14 if profits_last_year >=130001 &  profits_last_year <= 140000
+		replace profits_comparison_last=15 if profits_last_year >=140001 &  profits_last_year <= 150000
+		replace profits_comparison_last=16 if profits_last_year >=150001 &  profits_last_year <= 160000
+		replace profits_comparison_last=17 if profits_last_year >=160001 &  profits_last_year <= 170000
+		replace profits_comparison_last=18 if profits_last_year >=170001 &  profits_last_year <= 180000
+		replace profits_comparison_last=19 if profits_last_year >=180001 &  profits_last_year <= 190000
+		replace profits_comparison_last=20 if profits_last_year >=190001 &  profits_last_year <= 200000
+		replace profits_comparison_last=21  if profits_last_year >= 200001 &  profits_last_year !=.
+
+		cap drop profits_last_year_scale_dum
+		gen profits_last_year_scale_dum=profits_last_year_scale
+		order profits_last_year_scale_dum, after (profits_last_year_scale)
+		tostring profits_last_year_scale_dum,replace
+		destring profits_last_year_scale_dum,replace
+
+		foreach var of varlist _all{
+				char `var'[charname] "`var'"
+			}
+
+		listtab $biz_info profits_comparison_last profits_last_year_scale_dum profits_last_year  if profits_comparison_last !=profits_last_year_scale_dum & bo_operational==1, delimiter(",") appendto(`hfc_file') replace headlines("Profit value and scale LAST YEAR are off?") headchars(charname)
+
+
+	//Calculated Assets doesn't equal survey totals
+		cap drop assets_total_Check
+		local assets asset_land_value asset_building_value asset_lgvehicle_value asset_smvehicle_value asset_machine_value asset_tools_value asset_itech_value asset_furniture_value asset_wc1_stock_value asset_wc2_materials_value asset_wc3_money_value asset_ip_value
+		foreach var of  local assets {
+		destring `var', replace
+		replace `var'=0 if `var'==. & bo_operational==1
+		}
+
+		egen long assets_total_Check = rowtotal( asset_land_value asset_building_value asset_lgvehicle_value asset_smvehicle_value asset_machine_value asset_tools_value asset_itech_value asset_furniture_value asset_wc1_stock_value asset_wc2_materials_value asset_wc3_money_value asset_ip_value),missing
+
+		foreach var of varlist _all{
+				char `var'[charname] "`var'"
+			}
+
+		*replace assets_total = subinstr(assets_total,",","",.)
+		destring assets_total  assets_total_Check ,replace ignore(",")
+		listtab $biz_info assets_total assets_total_Check if assets_total != assets_total_Check  , delimiter(",") appendto(`hfc_file') replace headlines("Calculated Assets doesn't equal survey totals") headchars(charname)
+
+		//As of FEBRUARY 2020
+		cap drop assets_total_Check_2
+		local assets_2 asset_land_value_2 asset_building_value_2 asset_lgvehicle_value_2 asset_lgvehicle_value_2 asset_machine_value_2 asset_tools_value_2 asset_itech_value_2 asset_furniture_value_2 asset_wc1_stock_value_2 asset_wc2_materials_value_2 asset_wc3_money_value_2 asset_ip_value_2
+		foreach var of local assets_2 {
+		destring `var', replace
+		replace `var'=0 if `var'==. & bo_operational==1
+		}
+
+		egen long assets_total_Check_2 = rowtotal( asset_land_value_2 asset_building_value_2 asset_lgvehicle_value_2 asset_smvehicle_value_2 asset_machine_value_2 asset_tools_value_2 asset_itech_value_2 asset_furniture_value_2 asset_wc1_stock_value_2 asset_wc2_materials_value_2 asset_wc3_money_value_2 asset_ip_value_2),missing
+
+		foreach var of varlist _all{
+				char `var'[charname] "`var'"
+			}
+
+		destring assets_total_2	assets_total_Check_2 ,replace ignore(",")
+		listtab $biz_info assets_total_2 assets_total_Check_2 if assets_total_2 != assets_total_Check_2, delimiter(",") appendto(`hfc_file') replace headlines("Calculated Assets doesn't equal survey totals (As of FEBRUARY 2020)") headchars(charname)
+
+	//Respondent with  more than 100 employees
+		listtab $biz_info   bo_operational emp_total  bo_primary_what if emp_total >=100&emp_total!=.  , delimiter(",") appendto(`hfc_file') replace headlines("Respondent with  more than 100 employees") headchars(charname)
+
+
+	//Respondent with more higher level practices than lower level practices eg has buget but doesnt seperate finances
+
+		egen level1_practices=rowtotal(practices_q1 practices_q2 practices_q3 practices_q4 practices_q5 practices_q6 practices_q7),missing
+		egen level2_practices= rowtotal(practices_q8 practices_q9 practices_q10 practices_q11 practices_q12),missing
+
+		listtab $biz_info  bo_primary_how practices_q1- practices_q12 if level2_practices > level1_practices , delimiter(",") appendto(`hfc_file') replace headlines("Respondent with more higher level practices than lower level practices") headchars(charname)
+
+	//Respondent with more than 1 capital type
+
+		foreach var of varlist	capital_loan1_amount capital_loan2_amount capital_loan3_amount capital_loan4_amount capital_loan5_amount capital_loan6_amount capital_loan7_amount capital_loan8_amount capital_loan9_amount capital_loan10_amount {
+		gen `var'_count=0
+		replace `var'_count =1 if `var'>0 & `var' !=.
+		}
+
+		egen capital_loan_count= rowtotal (capital_loan1_amount_count capital_loan2_amount_count capital_loan3_amount_count capital_loan4_amount_count capital_loan5_amount_count capital_loan6_amount_count capital_loan7_amount_count capital_loan8_amount_count capital_loan9_amount_count capital_loan10_amount_count),missing
+
+		foreach var of varlist capital_equity1_amount capital_equity2_amount capital_equity3_amount capital_equity4_amount capital_equity5_amount {
+		gen `var'_count=0
+		replace `var'_count	=1 if `var'>0 & `var' !=.
+		}
+
+		egen capital_equity_count = rowtotal(capital_equity1_amount_count capital_equity2_amount_count capital_equity3_amount_count capital_equity4_amount_count capital_equity5_amount_count),missing
+
+
+
+	foreach var of varlist capital_grant1_value capital_grant2_value capital_grant3_value capital_grant4_value capital_grant5_value{
+		gen `var'_count=0
+		replace `var'_count	=1 if `var'>0 & `var' !=.
+	}
+	
+	egen capital_grant_count = rowtotal(capital_grant1_value_count capital_grant2_value_count capital_grant3_value_count capital_grant4_value_count capital_grant5_value_count),missing
+
+		
+  listtab $biz_info  capital_equity if capital_equity != capital_equity_count  & capital_equity !=., delimiter(",") appendto(`hfc_file') replace headlines("Respondent with more than 1 equity capital") headchars(charname)
+  listtab $biz_info  capital_loans if capital_loans != capital_loan_count & capital_loans !=. , delimiter(",") appendto(`hfc_file') replace headlines("Respondent with more than 1 loan capital") headchars(charname)
+	listtab $biz_info  capital_grants if capital_grants != capital_grant_count & capital_grants !=., delimiter(",") appendto(`hfc_file') replace headlines("Respondent with more than 1 grant capital") headchars(charname)
+
 	
