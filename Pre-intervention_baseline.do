@@ -283,7 +283,7 @@
     # delimit cr
 	
 	//tempfile Base_0
-	save "$output\Base_0.dta", replacev
+	save "$output\Base_0.dta", replace
    restore
 	
 	use "$output\Linea_Base_pre-intervention.dta", clear
@@ -296,10 +296,11 @@
 	drop in 207 //Duplicate entries
 	drop in 95  //Test entries
 	assert c(N) == 228
+		
+	save "$output/Linea_Base_pre-intervention-raw.dta", replace
+	export delimited using "$out/Linea_Base_pre-intervention-raw.csv", nolabel quote replace
 	
-	save "$out/Linea_Base_pre-intervention.dta", replace
-	export delimited using "$out/Linea_Base_pre-intervention.csv", nolabel quote replace
-
+	do import_CONCYTEC_PreIntervencion_Linea_Base.do
 	
 	erase "$output\Base_0.dta"
     //erase "$base\Linea_Base_pre-intervention.dta"
@@ -307,13 +308,18 @@
 /////////////////////////////////////////////////////////////
 //// 1. Clean variables           ////
 ////////////////////////////////////////////////////////////
+	
+	
 	//Clean duplicate collumns (fh-hu;qk;rq;sw;uc;vi;wo;xu;za;zw-aag; v164-v709) due to change in survey
 	//A. Check if columns are really duplicates, creating duplicate variables names *_DUP	
+	clear
+	use "$output/Linea_Base_pre-intervention.dta", replace
 	
 	// A.1
 	foreach i in fh-hu {
-	renvarlab `i', postfix(_D) label d
+	renvarlab `i', postfix(_D) d
 	}
+	//problem: no lable anymore
 	
     #delimit ;
     local varlist1
@@ -326,13 +332,16 @@
     #delimit cr
 	
  //set more on
+ /*
 	forvalues j = 1/11 /* No hay *_12_D */ {
 		foreach var of local varlist1 {
 			compare `var'_`j' `var'_`j'_D
     }
 	}
  //set more off
- 
+ */
+ 	//problem: how did you get var_D?
+	
 	br emp_executive_phone_7*
 	br emp_executive_phone_4*
 	br emp_executive_phone_2*
@@ -345,6 +354,7 @@
 	//A.2 
 	br emp_executive_name_1 v164
 	br emp_executive_title_1 v165
+	
 	//Result all v164-v229 have less information than emp_*
 	drop v164-v229
 	
@@ -409,12 +419,17 @@
 	order cust_impt10_interct_total_99, before(aag)	
 	
 	drop zx zy zz aaa aab aac aad aae aaf aag
-		
+	
 	//908 Var.
 	d,s
 	
+	save "$output/Linea_Base_pre-intervention-clean.dta", replace
+	
  window stopbox rusure "Do you want to continue to run high frequency checks?`=char(13)'Yes=continue; No=stop here."
  window stopbox note "Good choice!"
+ 
+ 
+ 
 
 
 /////////////////////////////////////////////////////////////
