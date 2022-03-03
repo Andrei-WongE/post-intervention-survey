@@ -313,7 +313,7 @@
 	//Clean duplicate collumns (fh-hu;qk;rq;sw;uc;vi;wo;xu;za;zw-aag; v164-v709) due to change in survey
 	//A. Check if columns are really duplicates, creating duplicate variables names *_DUP	
 	clear
-	use "$output/Linea_Base_pre-intervention.dta", replace
+	use "$output/Linea_Base_pre-intervention-raw.dta", replace
 	
 	// A.1
 	foreach i in fh-hu {
@@ -428,10 +428,6 @@
  window stopbox rusure "Do you want to continue to run high frequency checks?`=char(13)'Yes=continue; No=stop here."
  window stopbox note "Good choice!"
  
- 
- 
-
-
 /////////////////////////////////////////////////////////////
 //// 4. Run checks          ////
 ////////////////////////////////////////////////////////////
